@@ -1,9 +1,11 @@
-# Check massgrave.dev for more details
+# This script is hosted on https://get.activated.win for https://massgrave.dev
 
-write-host
-Write-Host "The current command (irm https://massgrave.dev/get | iex) will be retired in the future."
-Write-Host -ForegroundColor Green "Use the new command (irm https://get.activated.win | iex) moving forward."
-write-host
+if ($ExecutionContext.SessionState.LanguageMode.value__ -ne 0) {
+    $ExecutionContext.SessionState.LanguageMode
+    Write-Host "Windows PowerShell is not running in Full Language Mode."
+    Write-Host "Help - https://massgrave.dev/fix_powershell" -ForegroundColor White -BackgroundColor Blue
+    return
+}
 
 function Check3rdAV {
     $avList = Get-CimInstance -Namespace root\SecurityCenter2 -Class AntiVirusProduct | Where-Object { $_.displayName -notlike '*windows*' } | Select-Object -ExpandProperty displayName
@@ -11,6 +13,16 @@ function Check3rdAV {
         Write-Host '3rd party Antivirus might be blocking the script - ' -ForegroundColor White -BackgroundColor Blue -NoNewline
         Write-Host " $($avList -join ', ')" -ForegroundColor DarkRed -BackgroundColor White
     }
+}
+
+function CheckFile { 
+    param ([string]$FilePath) 
+    if (-not (Test-Path $FilePath)) { 
+        Check3rdAV
+        Write-Host "Failed to create MAS file in temp folder, aborting!"
+        Write-Host "Help - https://massgrave.dev/troubleshoot" -ForegroundColor White -BackgroundColor Blue
+        throw 
+    } 
 }
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -57,16 +69,16 @@ $rand = [Guid]::NewGuid().Guid
 $isAdmin = [bool]([Security.Principal.WindowsIdentity]::GetCurrent().Groups -match 'S-1-5-32-544')
 $FilePath = if ($isAdmin) { "$env:SystemRoot\Temp\MAS_$rand.cmd" } else { "$env:USERPROFILE\AppData\Local\Temp\MAS_$rand.cmd" }
 Set-Content -Path $FilePath -Value "@::: $rand `r`n$response"
+CheckFile $FilePath
 
 $env:ComSpec = "$env:SystemRoot\system32\cmd.exe"
-Start-Process -FilePath $env:ComSpec -ArgumentList "/c """"$FilePath"" $args""" -Wait
-
-if (-not (Test-Path -Path $FilePath)) {
-    Check3rdAV
-    Write-Host "Failed to create MAS file in temp folder, aborting!"
-    Write-Host "Help - https://massgrave.dev/troubleshoot" -ForegroundColor White -BackgroundColor Blue
-    return
+$chkcmd = & $env:ComSpec /c "echo CMD is working"
+if ($chkcmd -notcontains "CMD is working") {
+    Write-Warning "cmd.exe is not working.`nReport this issue at https://massgrave.dev/troubleshoot"
 }
+Start-Process -FilePath $env:ComSpec -ArgumentList "/c """"$FilePath"" $args""" -Wait
+CheckFile $FilePath
 
 $FilePaths = @("$env:SystemRoot\Temp\MAS*.cmd", "$env:USERPROFILE\AppData\Local\Temp\MAS*.cmd")
 foreach ($FilePath in $FilePaths) { Get-Item $FilePath | Remove-Item }
+
